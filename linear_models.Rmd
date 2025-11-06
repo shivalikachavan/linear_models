@@ -2,7 +2,7 @@
 title: "Linear Models - November 6, 2025"
 author: "Shivalika Chavan"
 date: "2025-11-06"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -45,3 +45,166 @@ Look at results of `lm`
 summary(fit)
 ```
 
+```{r}
+fit |> 
+  broom::tidy() |> 
+  mutate(
+    term = str_replace(term, "borough", "Borough: ")
+  ) |> 
+  select(term, estimate, p.value) |> 
+  knitr::kable(digits = 3)
+
+fit |> 
+  broom::glance()
+```
+
+
+## Diagnostics
+
+Looking at residuals
+```{r}
+nyc_airbnb |> 
+  modelr::add_residuals(fit) |> 
+  modelr::add_predictions(fit) |> 
+  filter(resid < 1000) |> 
+  ggplot(aes(x = stars, y = resid)) + 
+  geom_point()
+```
+
+## Hypothesis Testing
+
+```{r}
+fit |> 
+  broom::tidy()
+```
+
+What about a categorical variable
+
+```{r}
+fit_alt = lm(price ~ stars + borough + room_type, data = nyc_airbnb)
+fit_null = lm(price ~ stars + borough, data = nyc_airbnb)
+
+anova(fit_null, fit_alt) |> 
+  broom::tidy()
+```
+
+
+## Interactions vs. Nested Data
+
+```{r}
+fit_interactions = lm(price ~ stars * borough + room_type * borough, data = nyc_airbnb)
+
+fit_interactions |> broom::tidy()
+```
+
+Asking the question what's the effect on price of stars or room type in a specific borough?
+
+```{r}
+nyc_airbnb |> 
+  filter(borough == "Brooklyn") |> 
+  lm(price ~ stars + room_type, data = _) |> 
+  broom::tidy()
+
+nyc_airbnb |> 
+  filter(borough == "Manhattan") |> 
+  lm(price ~ stars + room_type, data = _) |> 
+  broom::tidy()
+
+nyc_airbnb |> 
+  filter(borough == "Queens") |> 
+  lm(price ~ stars + room_type, data = _) |> 
+  broom::tidy()
+
+nyc_airbnb |> 
+  filter(borough == "Bronx") |> 
+  lm(price ~ stars + room_type, data = _) |> 
+  broom::tidy()
+```
+
+Can shorten this into a function
+
+```{r}
+lm_airbnb = function(df) {
+  
+  lm(price ~ stars + room_type, data = df)
+  
+}
+
+# Checking that it works
+nyc_airbnb |> 
+  filter(borough == "Bronx") |> 
+  lm_airbnb() |> 
+  broom::tidy()
+```
+
+Create a list of dfs and then iterate over them to fit the lm
+```{r}
+nested_lm_results = 
+  nyc_airbnb |> 
+  nest(data = -borough) |> 
+  mutate(
+    fits = map(data, lm_airbnb),
+    results = map(fits, broom::tidy)
+  ) |> 
+  select(borough, results) |> 
+  unnest(results)
+```
+
+Do some untidying
+```{r}
+nested_lm_results |> 
+  select(borough, term, estimate) |> 
+  pivot_wider(
+    names_from = term, 
+    values_from = estimate
+  )
+```
+
+Now use an *anonymous* function instead of `lm_airbnb`. Basically it only exists in this
+```{r}
+nested_lm_results = 
+  nyc_airbnb |> 
+  nest(data = -borough) |> 
+  mutate(
+    fits = map(data, \(df) lm(price ~ stars + room_type, data = df)),
+    results = map(fits, broom::tidy)
+  ) |> 
+  select(borough, results) |> 
+  unnest(results)
+
+
+nested_lm_results |> 
+  select(borough, term, estimate) |> 
+  pivot_wider(
+    names_from = term, 
+    values_from = estimate
+  )
+```
+
+
+## More Examples (more extreme)
+```{r}
+manhattan_analysis = 
+  nyc_airbnb |> 
+  filter(borough == "Manhattan") |> 
+  nest(data = -neighbourhood) |> 
+  mutate(
+    lm_fits = map(data, \(df) lm(price ~ stars + room_type, data = df)),
+    results = map(lm_fits, broom::tidy)
+  ) |> 
+  select(neighbourhood, results) |> 
+  unnest(results)
+```
+
+Make a plot
+```{r}
+manhattan_analysis |> 
+  filter(term == "stars") |> 
+  mutate(neighbourhood = fct_reorder(neighbourhood, estimate)) |> 
+  ggplot(aes(x = neighbourhood, y = estimate)) + 
+  geom_point() + 
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1)
+  )
+```
+Shows that mostly stars dont affect price, but in Nolita, an increase in stars drops the price and NoHo the price goes up. But this is highly affected by outliers too, which is why residuals are high. 
