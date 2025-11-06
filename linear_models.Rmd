@@ -1,0 +1,47 @@
+---
+title: "Linear Models - November 6, 2025"
+author: "Shivalika Chavan"
+date: "2025-11-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(p8105.datasets)
+
+set.seed(1)
+
+data(nyc_airbnb)
+```
+
+```{r}
+nyc_airbnb = 
+  nyc_airbnb |> 
+  mutate(stars = review_scores_location / 2) |> 
+  rename(borough = neighbourhood_group) |> 
+  filter(borough != "Staten Island") |> 
+  select(price, stars, borough, room_type, neighbourhood)
+```
+
+Do regression
+```{r}
+fit = lm(price ~ stars + borough, data = nyc_airbnb)
+```
+
+Additional cleaning and then re fit. Now comparing to Manhattan instead of Bronx. 
+```{r}
+nyc_airbnb = 
+  nyc_airbnb |> 
+  mutate(
+    borough = fct_infreq(borough),
+    room_type = fct_infreq(room_type)
+  )
+
+fit = lm(price ~ stars + borough, data = nyc_airbnb)
+```
+
+Look at results of `lm`
+```{r}
+summary(fit)
+```
+
