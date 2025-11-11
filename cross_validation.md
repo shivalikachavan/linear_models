@@ -3,6 +3,8 @@ cross_validation
 Shivalika Chavan
 2025-11-11
 
+### LIDAR
+
 ``` r
 data("lidar")
 
@@ -37,8 +39,8 @@ Fit a few models to the training data `train_df`
 
 ``` r
 linear_model = lm(logratio ~ range, data = train_df)
-smooth_model = gam(logratio ~ s(range), data = train_df) #Generalized additive model (anything that's non-linear), range is smoothed
-wiggly_model = gam(logratio ~ s(range, k = 30), sp = 10e-6, , data = train_df) # using 30 polynomials, sp smoothing parameter by not a lot
+smooth_model = mgcv::gam(logratio ~ s(range), data = train_df) #Generalized additive model (anything that's non-linear), range is smoothed
+wiggly_model = mgcv::gam(logratio ~ s(range, k = 30), sp = 10e-6, , data = train_df) # using 30 polynomials, sp smoothing parameter by not a lot
 ```
 
 Looking at `linear_model`
@@ -135,8 +137,8 @@ cv_df =
   mutate(
     # Using anonymous function
     linear_fits = map(train, \(df) lm(logratio ~ range, data = df)),
-    smooth_fits = map(train, \(df) gam(logratio ~ s(range), data = df)),
-    wiggly_fits = map(train, \(df) gam(logratio ~ s(range, k = 30), sp = 10e-6, , data = df))
+    smooth_fits = map(train, \(df) mgcv::gam(logratio ~ s(range), data = df)),
+    wiggly_fits = map(train, \(df) mgcv::gam(logratio ~ s(range, k = 30), sp = 10e-6, , data = df))
   ) |> 
   mutate(
     rmse_linear_fits = map2_dbl(linear_fits, test, rmse),
@@ -161,3 +163,121 @@ cv_df |>
 ```
 
 <img src="cross_validation_files/figure-gfm/unnamed-chunk-12-1.png" width="90%" />
+
+### Child Growth
+
+``` r
+child_growth_df = read_csv("./data/nepalese_children.csv")
+```
+
+    ## Rows: 2705 Columns: 5
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## dbl (5): age, sex, weight, height, armc
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+Weight vs arm circumference
+
+``` r
+child_growth_df |> 
+  ggplot(aes(x = weight, y = armc)) + 
+  geom_point(alpha = .5)
+```
+
+<img src="cross_validation_files/figure-gfm/unnamed-chunk-14-1.png" width="90%" />
+
+Adding changepoint @ weight = 7
+
+``` r
+child_growth_df =
+  child_growth_df |> 
+  mutate(weight_cp7 = (weight > 7) * (weight - 7))
+```
+
+Fit 3 models
+
+``` r
+linear_model           = lm(armc ~ weight, data = child_growth_df)
+piecewise_linear_model = lm(armc ~ weight + weight_cp7, data = child_growth_df)
+smooth_model           = mgcv::gam(armc ~ s(weight), data = child_growth_df)
+```
+
+``` r
+child_growth_df |> 
+  add_predictions(linear_model) |> 
+  ggplot(aes(x = weight, y = armc)) + 
+  geom_point(alpha = 0.5) +
+  geom_line(aes(y = pred), color = "red")
+```
+
+<img src="cross_validation_files/figure-gfm/unnamed-chunk-17-1.png" width="90%" />
+
+``` r
+child_growth_df |> 
+  add_predictions(piecewise_linear_model) |> 
+  ggplot(aes(x = weight, y = armc)) + 
+  geom_point(alpha = 0.5) +
+  geom_line(aes(y = pred), color = "red")
+```
+
+<img src="cross_validation_files/figure-gfm/unnamed-chunk-17-2.png" width="90%" />
+
+``` r
+child_growth_df |> 
+  add_predictions(smooth_model) |> 
+  ggplot(aes(x = weight, y = armc)) + 
+  geom_point(alpha = 0.5) +
+  geom_line(aes(y = pred), color = "red")
+```
+
+<img src="cross_validation_files/figure-gfm/unnamed-chunk-17-3.png" width="90%" />
+
+Repeating Cross validation
+
+Automating 100 iterations of CV train/test split. Defaults to 80/20
+split
+
+``` r
+cv_child_growth_df = crossv_mc(child_growth_df, n = 100) |> 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble)
+  )
+```
+
+Fitting models again and again
+
+``` r
+cv_child_growth_df = 
+  cv_child_growth_df |> 
+  mutate(
+    # Using anonymous functions
+    linear_fits           = map(train, \(df) lm(armc ~ weight, data = df)),
+    piecewise_linear_fits = map(train, \(df) lm(armc ~ weight + weight_cp7, data = df)),
+    smooth_fits           = map(train, \(df) mgcv::gam(armc ~ s(weight), data = df))
+  ) |> 
+  mutate(
+    rmse_linear_fits           = map2_dbl(linear_fits, test, rmse),
+    rmse_piecewise_linear_fits = map2_dbl(piecewise_linear_fits, test, rmse),
+    rmse_smooth_fits           = map2_dbl(smooth_fits, test, rmse)
+  )
+```
+
+Looking at distribution of RMSE
+
+``` r
+cv_child_growth_df |> 
+  select(starts_with("rmse")) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") |> 
+  mutate(model = fct_inorder(model)) |> 
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin()
+```
+
+<img src="cross_validation_files/figure-gfm/unnamed-chunk-20-1.png" width="90%" />
