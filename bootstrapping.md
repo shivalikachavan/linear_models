@@ -196,3 +196,87 @@ bootstrap_results |>
     ##   <chr>          <dbl>    <dbl>
     ## 1 (Intercept)     1.78     2.09
     ## 2 x               2.91     3.32
+
+### Doing bootstrapping again (but faster)
+
+``` r
+bootstrap_results = 
+  # sim_df_nonconstant |> 
+  sim_df_constant |> 
+  bootstrap(n = 5000) |> 
+  mutate(
+    df = map(strap, as_tibble),
+    fits = map(df, \(df) lm(y~x, data = df)),
+    results = map(fits, broom::tidy)
+  ) |> 
+  select(.id, results) |> 
+  unnest(results)
+```
+
+Look at results:
+
+``` r
+bootstrap_results |> 
+  group_by(term) |> 
+  summarize(
+    mean = mean(estimate),
+    se = sd(estimate)
+  )
+```
+
+    ## # A tibble: 2 × 3
+    ##   term         mean     se
+    ##   <chr>       <dbl>  <dbl>
+    ## 1 (Intercept)  1.98 0.0974
+    ## 2 x            3.04 0.0707
+
+### Revisiting AirBnB Data
+
+``` r
+data("nyc_airbnb")
+
+nyc_airbnb = 
+  nyc_airbnb |> 
+  mutate(stars = review_scores_location/2) |> 
+  rename(borough = neighbourhood_group) |> 
+  filter(borough != "Staten Island") |> 
+  drop_na(price, stars, room_type) |> 
+  select(price, stars, room_type, borough)
+```
+
+What does this look like
+
+``` r
+nyc_airbnb |> 
+  ggplot(aes(x = stars, y = price, color = room_type)) +
+  geom_point(alpha = 0.5)
+```
+
+<img src="bootstrapping_files/figure-gfm/unnamed-chunk-15-1.png" width="90%" />
+
+Trying the bootstrap
+
+``` r
+nyc_airbnb_bootstrap_results = 
+  nyc_airbnb |> 
+  filter(borough == "Manhattan") |> 
+  bootstrap(n = 1000) |> 
+  mutate(
+    df = map(strap, as_tibble),
+    fits = map(df, \(df) lm(price ~ stars + room_type, data = df)),
+    results = map(fits, broom::tidy)
+  ) |> 
+  select(.id, results) |> 
+  unnest(results)
+```
+
+Look at distribution of slope for stars
+
+``` r
+nyc_airbnb_bootstrap_results |> 
+  filter(term == "stars") |> 
+  ggplot(aes(x = estimate)) + 
+  geom_density()
+```
+
+<img src="bootstrapping_files/figure-gfm/unnamed-chunk-17-1.png" width="90%" />
