@@ -96,9 +96,9 @@ sim_df_nonconstant |>
 Formalizing and extracting results
 ```{r}
 boot_straps = 
-  tibble(strap_number = 1:10) |> 
+  tibble(iter = 1:5000) |> 
   mutate(
-    strap_sample = map(strap_number, \(i) boot_sample(df = sim_df_nonconstant))
+    strap_sample = map(iter, \(i) boot_sample(df = sim_df_nonconstant))
   )
 
 boot_straps
@@ -113,5 +113,50 @@ boot_straps |>
   geom_point(alpha = 0.3) +
   geom_smooth(method = "lm", se = FALSE) + 
   xlim(-2.5, 4) + ylim(-5, 17)
+```
+
+Actually running analysis
+```{r}
+bootstrap_results = 
+  boot_straps |> 
+  mutate(
+    fits = map(strap_sample, \(df) lm(y~x, data = df)),
+    results = map(fits, broom::tidy)
+    )
+  
+```
+
+Look at results:
+```{r}
+bootstrap_results |> 
+  select(iter, results) |> 
+  unnest(results) |> 
+  group_by(term) |> 
+  summarize(
+    mean = mean(estimate),
+    se = sd(estimate)
+  )
+```
+
+Look at these
+```{r}
+bootstrap_results |> 
+  select(iter, results) |> 
+  unnest(results) |> 
+  filter(term == "x") |> 
+  ggplot(aes(x = estimate)) + 
+  geom_density()
+```
+
+
+```{r}
+bootstrap_results |> 
+  select(iter, results) |> 
+  unnest(results) |> 
+  group_by(term) |> 
+  summarize(
+    ci_lower = quantile(estimate, 0.025),
+    ci_upper = quantile(estimate, 0.975)
+  )
 ```
 

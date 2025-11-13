@@ -98,27 +98,28 @@ Formalizing and extracting results
 
 ``` r
 boot_straps = 
-  tibble(strap_number = 1:10) |> 
+  tibble(iter = 1:5000) |> 
   mutate(
-    strap_sample = map(strap_number, \(i) boot_sample(df = sim_df_nonconstant))
+    strap_sample = map(iter, \(i) boot_sample(df = sim_df_nonconstant))
   )
 
 boot_straps
 ```
 
-    ## # A tibble: 10 × 2
-    ##    strap_number strap_sample      
-    ##           <int> <list>            
-    ##  1            1 <tibble [250 × 3]>
-    ##  2            2 <tibble [250 × 3]>
-    ##  3            3 <tibble [250 × 3]>
-    ##  4            4 <tibble [250 × 3]>
-    ##  5            5 <tibble [250 × 3]>
-    ##  6            6 <tibble [250 × 3]>
-    ##  7            7 <tibble [250 × 3]>
-    ##  8            8 <tibble [250 × 3]>
-    ##  9            9 <tibble [250 × 3]>
-    ## 10           10 <tibble [250 × 3]>
+    ## # A tibble: 5,000 × 2
+    ##     iter strap_sample      
+    ##    <int> <list>            
+    ##  1     1 <tibble [250 × 3]>
+    ##  2     2 <tibble [250 × 3]>
+    ##  3     3 <tibble [250 × 3]>
+    ##  4     4 <tibble [250 × 3]>
+    ##  5     5 <tibble [250 × 3]>
+    ##  6     6 <tibble [250 × 3]>
+    ##  7     7 <tibble [250 × 3]>
+    ##  8     8 <tibble [250 × 3]>
+    ##  9     9 <tibble [250 × 3]>
+    ## 10    10 <tibble [250 × 3]>
+    ## # ℹ 4,990 more rows
 
 Quick check
 
@@ -135,3 +136,63 @@ boot_straps |>
     ## `geom_smooth()` using formula = 'y ~ x'
 
 <img src="bootstrapping_files/figure-gfm/unnamed-chunk-7-1.png" width="90%" />
+
+Actually running analysis
+
+``` r
+bootstrap_results = 
+  boot_straps |> 
+  mutate(
+    fits = map(strap_sample, \(df) lm(y~x, data = df)),
+    results = map(fits, broom::tidy)
+    )
+```
+
+Look at results:
+
+``` r
+bootstrap_results |> 
+  select(iter, results) |> 
+  unnest(results) |> 
+  group_by(term) |> 
+  summarize(
+    mean = mean(estimate),
+    se = sd(estimate)
+  )
+```
+
+    ## # A tibble: 2 × 3
+    ##   term         mean     se
+    ##   <chr>       <dbl>  <dbl>
+    ## 1 (Intercept)  1.93 0.0762
+    ## 2 x            3.11 0.103
+
+Look at these
+
+``` r
+bootstrap_results |> 
+  select(iter, results) |> 
+  unnest(results) |> 
+  filter(term == "x") |> 
+  ggplot(aes(x = estimate)) + 
+  geom_density()
+```
+
+<img src="bootstrapping_files/figure-gfm/unnamed-chunk-10-1.png" width="90%" />
+
+``` r
+bootstrap_results |> 
+  select(iter, results) |> 
+  unnest(results) |> 
+  group_by(term) |> 
+  summarize(
+    ci_lower = quantile(estimate, 0.025),
+    ci_upper = quantile(estimate, 0.975)
+  )
+```
+
+    ## # A tibble: 2 × 3
+    ##   term        ci_lower ci_upper
+    ##   <chr>          <dbl>    <dbl>
+    ## 1 (Intercept)     1.78     2.09
+    ## 2 x               2.91     3.32
