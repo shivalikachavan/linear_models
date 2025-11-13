@@ -1,0 +1,117 @@
+---
+title: "bootstrapping"
+author: "Shivalika Chavan"
+date: "2025-11-13"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(p8105.datasets)
+library(modelr)
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+Simulate two data sets
+```{r}
+set.seed(1)
+
+n_samples = 250
+
+sim_df_constant = 
+  tibble(
+    x = rnorm(n_samples, mean = 1, sd = 1),
+    error = rnorm(n_samples, mean = 0, sd = 1),
+    y = 2 + 3 * x + error
+  )
+
+sim_df_nonconstant = 
+  sim_df_constant |> 
+  mutate(
+    error = error * .75 * x,
+    y = 2 + 3 * x + error
+  )
+  
+```
+
+Plotting
+```{r}
+sim_df_constant |> 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point()
+
+sim_df_nonconstant |> 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point()
+```
+
+Linear Models on these?
+```{r}
+sim_df_constant |> 
+  lm(y ~ x, data = _) |> 
+  broom::tidy() |> 
+  knitr::kable(digits = 3)
+
+sim_df_nonconstant |> 
+  lm(y ~ x, data = _) |> 
+  broom::tidy() |> 
+  knitr::kable(digits = 3)
+```
+
+Drawing a bootstrap sample
+```{r}
+boot_sample = function(df){
+  
+  sample_frac(df, size = 1, replace = TRUE)
+  
+}
+```
+
+Doing the function
+```{r}
+sim_df_nonconstant |> 
+  boot_sample() |> 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", se = FALSE) + 
+  xlim(-2.5, 4) + ylim(-5, 17)
+```
+
+Formalizing and extracting results
+```{r}
+boot_straps = 
+  tibble(strap_number = 1:10) |> 
+  mutate(
+    strap_sample = map(strap_number, \(i) boot_sample(df = sim_df_nonconstant))
+  )
+
+boot_straps
+```
+
+Quick check
+```{r}
+boot_straps |> 
+  pull(strap_sample) |> 
+  nth(2) |> 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", se = FALSE) + 
+  xlim(-2.5, 4) + ylim(-5, 17)
+```
+
